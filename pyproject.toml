@@ -17,4 +17,5 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=7.3.0",
+    "treely>=2.0.0",
 ]
