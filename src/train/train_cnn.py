@@ -19,7 +19,7 @@ from argparse import ArgumentParser
 import math
 from random import randint, random
 
-from configuration.config import data_path, model_dir, val_transform
+from configuration.config import name_tag_data_dir, model_dir, val_transform
 
 load_dotenv()
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
@@ -54,7 +54,7 @@ class NameTagDataset(Dataset):
 
         row = self.df.iloc[idx]
 
-        img = Image.open(data_path / row["image_path"]).convert("RGB")
+        img = Image.open(name_tag_data_dir / row["image_path"]).convert("RGB")
 
         if self.transform:
             img = self.transform(img)
@@ -104,50 +104,65 @@ train_transform = transforms.Compose([
     )
 ])
 
-#   val_transform is imported from configuration/config.py
-    
-train_dataset = NameTagDataset(csv_file=data_path / "train.csv", transform=train_transform)
-val_dataset = NameTagDataset(csv_file=data_path / "test.csv", transform=val_transform)
+trainable_layers =  ["fc"]
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+hyperparameters = {
+    "epochs": 75,
+    "batch_size": 32,
+    "data_version": "v4",
+    "fc_lr": 1e-4,
+    
+}
+
+#   val_transform is imported from configuration/config.py
+data_dir = name_tag_data_dir / hyperparameters["data_version"]
+train_dataset = NameTagDataset(csv_file=data_dir / "train.csv", transform=train_transform)
+val_dataset = NameTagDataset(csv_file=data_dir / "test.csv", transform=val_transform)
+
+train_loader = DataLoader(train_dataset, batch_size=hyperparameters["batch_size"], shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=hyperparameters["batch_size"], shuffle=False)
 
 model = resnet18(weights=ResNet18_Weights.DEFAULT)
 
 # Freeze backbone, keep model only for feature extraction
 for param in model.parameters():
     param.requires_grad = False
-    
-# Replace classifier
-model.fc = nn.Linear(model.fc.in_features, 2)
 
-
-criterion = nn.CrossEntropyLoss()
-
-optimizer = torch.optim.Adam(
-    model.fc.parameters(),
-    lr=1e-3
-)
-
-# Freeze backbone
-for param in model.parameters():
-    param.requires_grad = False
+for layer in trainable_layers:
+    if layer == "layer4":
+        for param in model.layer4.parameters():
+            param.requires_grad = True
+    elif layer == "layer3":
+        for param in model.layer3.parameters():
+            param.requires_grad = True
 
 # Replace classifier
 model.fc = nn.Linear(model.fc.in_features, 2)
+
 
 model = model.to(device)
 
 # Loss & Optimizer
 criterion = nn.CrossEntropyLoss()
 
-optimizer = torch.optim.Adam(
-    model.fc.parameters(),
-    lr=1e-3
+layers_lr_map = {
+    "fc":
+        {
+            "params": model.fc.parameters(), 
+            "lr": hyperparameters.get("fc_lr")
+        },
+    "layer4":
+        {
+            "params": model.layer4.parameters(), 
+            "lr": hyperparameters.get("layer4_lr")
+        }
+}
+
+optimizer = torch.optim.AdamW(
+    [layers_lr_map[layer] for layer in trainable_layers if layer in layers_lr_map],
 )
 
-
-epochs = 50
+epochs = hyperparameters["epochs"]
 best_acc = 0
 best_model_state_dict = None
 final_precision = 0
@@ -239,12 +254,15 @@ mlflow.pytorch.log_model(
     serialization_format="pickle"
 )
 
-# log data version
-mlflow.log_param("data_version", "v3")
+# log the hyperparameters to mlflow
+mlflow.log_params(hyperparameters)
+
+# log trainable layers to mlflow
+mlflow.log_param("trainable_layers", ",".join(trainable_layers))
 
 # log dataset as artifact
-mlflow.log_artifact(str(data_path / "train.csv"), artifact_path="data")
-mlflow.log_artifact(str(data_path / "test.csv"), artifact_path="data")
+mlflow.log_artifact(str(data_dir / "train.csv"), artifact_path="data")
+mlflow.log_artifact(str(data_dir / "test.csv"), artifact_path="data")
 
 # Save the best model to local
 model_save_path = model_dir / f"best_resnet18_{version}.pth"

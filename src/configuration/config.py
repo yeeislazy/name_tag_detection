@@ -10,18 +10,36 @@ yolo_model = "yolo11s"
 
 
 # data home dir
-data_path = Path(__file__).parent.parent.parent / "data"
-data_path.mkdir(parents=True, exist_ok=True)
+data_dir = Path(__file__).parent.parent.parent / "data"
+data_dir.mkdir(parents=True, exist_ok=True)
 
 
 # training data path
-## raw data path
-true_data_path = data_path / "true"
-false_data_path = data_path / "false"
-fake_data_path = data_path / "fake"
-true_data_path.mkdir(parents=True, exist_ok=True)
-false_data_path.mkdir(parents=True, exist_ok=True)
-fake_data_path.mkdir(parents=True, exist_ok=True)
+## name_tag training data path
+name_tag_data_dir = data_dir / "name_tag"
+name_tag_data_dir.mkdir(parents=True, exist_ok=True)
+name_tag_ref_dir = name_tag_data_dir / "ref"
+name_tag_true_dir = name_tag_data_dir / "true"
+name_tag_false_dir = name_tag_data_dir / "false"
+name_tag_fake_dir = name_tag_data_dir / "fake"
+name_tag_true_dir.mkdir(parents=True, exist_ok=True)
+name_tag_false_dir.mkdir(parents=True, exist_ok=True)
+name_tag_fake_dir.mkdir(parents=True, exist_ok=True)
+
+## yolo training data path
+yolo_data_dir = data_dir / "yolo"
+yolo_data_dir.mkdir(parents=True, exist_ok=True)
+yolo_ref_dir = yolo_data_dir / "ref"
+yolo_raw_dir = yolo_data_dir / "raw"
+yolo_images_dir = yolo_data_dir / "images"
+yolo_labels_dir = yolo_data_dir / "labels"
+yolo_ref_dir.mkdir(parents=True, exist_ok=True)
+yolo_raw_dir.mkdir(parents=True, exist_ok=True)
+yolo_images_dir.mkdir(parents=True, exist_ok=True)
+yolo_labels_dir.mkdir(parents=True, exist_ok=True)
+for subdir in ["train", "val", "test"]:
+    (yolo_images_dir / subdir).mkdir(parents=True, exist_ok=True)
+    (yolo_labels_dir / subdir).mkdir(parents=True, exist_ok=True)
 
 # model dir
 model_dir = Path(__file__).parent.parent.parent / "models"
@@ -48,173 +66,172 @@ debug_crop_dir = debug_dir / "debug_crop"
 debug_crop_dir.mkdir(parents=True, exist_ok=True)
 
 train_img_prompt = {
-    "true" : """
-    Based on the two reference images provided, generate a new image of a person wearing a name tag. 
-    The first reference image shows a person wearing a name tag - use this as a guide for how the name tag should be positioned on the chest and the overall professional appearance.
-    The second reference image is a close-up of the name tag itself - ensure the name tag design, colors, and text style match this reference exactly.
+    "name_tag": {
+        "true" : """
+        You are given several reference images.
 
-    IMAGE COMPOSITION: 
-    Generate a **full-body or upper-body crop of a person**, as if extracted by a person detection algorithm (like YOLO). 
-    - The person's **head should be near the top of the frame** and **feet near the bottom** (full-body), OR at least **waist-up** (upper-body).
-    - The person should occupy approximately 80-95% of the image frame, with minimal background visible.
-    - This simulates the output of a person detector that crops the bounding box around a detected person.
+        Reference image 1:
+        A front-view image of a person wearing the target company name tag.
+        Use this image only as the reference for the appearance, placement and design of the target name tag.
 
-    CAMERA CHARACTERISTICS:
-    - Simulated surveillance camera perspective (slightly elevated angle, looking down)
-    - Cool/neutral color temperature typical of security cameras
-    - Moderate contrast, slight vignetting at corners
-    - The name tag must be clearly visible and readable on the person's chest
+        Reference images 2 and onwards:
+        Surveillance camera crops of people.
+        Use these images as references for the camera angle, crop style, image quality and overall surveillance appearance.
 
-    PERSON'S ORIENTATION: The person is {orientation} relative to the camera.
+        Generate ONE realistic surveillance-camera image of a person.
 
-    CLOTHING: The person is wearing {color} {style}. The name tag should contrast well with the clothing color to remain clearly visible.
+        Requirements:
 
-    BACKGROUND: Minimal, showing {setting} in the background, mostly out of focus.
+        - Match the camera angle, crop style and image quality of the surveillance reference images.
+        - The person should appear naturally captured by a surveillance camera.
+        - Recreate the target company name tag based on Reference image 1.
+        - Do NOT paste, overlay or directly copy the reference image.
+        - The name tag must blend naturally with the clothing.
+        - The name tag should have the same blur, lighting, perspective and resolution as the rest of the image.
+        - The name tag should not appear sharper than the clothing.
+        - Camera mounted high above, looking slightly downward.
+        - Indoor environment.
+        - The person occupies most of the frame, similar to a YOLO person crop.
+        - Clothing: {color} {style}
+        - Pose: {orientation}
+        """,
+        "fake": """
+        You are given a surveillance image of a person.
 
-    LIGHTING: {light}, typical for indoor security camera footage.
+        Generate another surveillance image with a similar camera angle and crop style.
 
-    REQUIREMENTS:
-    - **Full-body or at least waist-up crop** (YOLO-style person detection output)
-    - Person fills most of the frame (80-95%)
-    - Name tag visible and naturally positioned on chest
-    - The clothing color {color} should be distinctly visible
-    - Background minimal and slightly blurred
-    - Realistic surveillance/camera aesthetic
-    """,
-    "fake": """
-    Generate a new image of a person wearing a **DIFFERENT** name tag (NOT the one in the reference image).
-    The name tag should have a different color, design, or format (e.g., red badge, vertical orientation, different logo).
-    The person is {orientation}, dressed in {color} {style}, in {setting} with {light} lighting.
-    Full-body or waist-up crop, YOLO-style person detection output.
-    The name tag must be clearly visible on the chest.
+        Requirements:
+        - Match the reference person's pose and viewpoint.
+        - The person is {orientation}.
+        - Clothing is {color} {style}.
+        - Camera is mounted high above, looking downward.
+        - Indoor environment.
+        - Wear a DIFFERENT badge or NO badge.
+        - Do NOT use the company name tag from the reference image.
+        - Slight motion blur and low-resolution surveillance camera appearance.
+        """
+    },
+    "yolo": """
+        You are given several reference images.
 
-    REQUIREMENTS:
-    - **Full-body or at least waist-up crop** (YOLO-style person detection output)
-    - Person fills most of the frame (80-95%)
-    - Name tag visible and naturally positioned on chest
-    - The clothing color {color} should be distinctly visible
-    - Background minimal and slightly blurred
-    - Realistic surveillance/camera aesthetic
+        Reference images:
+        Frames captured from the target surveillance camera.
+
+        Generate ONE new surveillance camera frame that closely matches the visual distribution of the reference surveillance images.
+
+        The generated image will be used as training data for a YOLO person detection model.
+
+        IMPORTANT:
+        Do not create a normal office photograph.
+        The output must look like a real fixed CCTV surveillance frame.
+
+        Camera perspective:
+        - Match the exact surveillance camera viewpoint from the reference images.
+        - The camera is mounted on the ceiling and points almost vertically downward toward the floor.
+        - The optical axis of the camera is close to perpendicular (90 degrees) to the ground plane.
+        - Use a near top-down bird's-eye surveillance perspective.
+        - People should be viewed mostly from above, with visible tops of heads and shoulders.
+        - Faces should not be the main focus because of the high camera angle.
+        - Avoid low-angle or eye-level viewpoints.
+        - Avoid looking horizontally across the room.
+        - Maintain the same high camera height, perspective distortion and person scale as the reference CCTV frames.
+        
+        Perspective constraints:
+        - The image should resemble a ceiling-mounted security camera recording.
+        - Human figures should appear smaller and flatter compared with normal photographs.
+        - The scene should have reduced depth perspective due to the overhead viewpoint.
+
+        Composition:
+        - Match the same scene layout, camera height, perspective, lighting and image quality as the reference frames.
+        - Keep similar empty spaces, walking paths and room coverage.
+        - The frame should feel like a randomly captured surveillance moment, not a staged image.
+
+        People:
+        - Include {people_count} people.
+        - People should have different clothing colors, body shapes, poses and walking directions.
+        - People should be naturally distributed across the scene.
+        - Some people should be close together.
+        - Increase realistic human occlusion:
+            - Most people (70-90%) in the frame should be partially hidden.
+            - Many people should be blocked by office desks, chairs, cubicle partitions, glass dividers, monitors, and other employees.
+            - A large number of people should not have a complete visible body.
+            - Some people should only have their head, shoulders, or upper torso visible.
+            - People walking behind others should be partially covered.
+            - Overlapping groups of people should appear naturally.
+            - The scene should resemble a crowded workplace surveillance recording, not a clean dataset
+
+        Surveillance image characteristics:
+        - Low-resolution CCTV appearance.
+        - Slight compression artifacts.
+        - Slight motion blur.
+        - Realistic surveillance camera noise.
+        - Uneven indoor lighting.
+        - Slight distortion from a wide-angle security camera lens.
+        - The image should look like a frame extracted from a security recording.
+
+        Name tags:
+        - Approximately {badge_count} people should wear company name tags.
+        - Name tags should be small and naturally attached to clothing.
+        - They should match the perspective, lighting, blur and resolution of the CCTV image.
+        - Some name tags can be partially hidden by body pose or occlusion.
+        - Do not make name tags large, clean or clearly visible.
+
+        Environment:
+        - Indoor office environment.
+        - Realistic workplace layout.
+        - Desks, corridors, meeting areas or office spaces.
+        - No cinematic composition.
+
+        Avoid:
+        - eye-level camera angle
+        - smartphone photo
+        - DSLR photography
+        - portrait photography
+        - clean separated people
+        - posed people looking at camera
+        - large visible faces
+        - perfectly sharp images
+        - cinematic lighting
+        - unrealistic oversized name tags
     """
 }
 
 # detail setting for generating images
-train_img_params = {
-    # person orientation relative to the camera, make sure the name tag is visible
+train_params = {
     "orientation": [
-        "standing facing the camera directly (front view, badge fully visible)",
-        "standing facing left (profile view, badge visible on the side)",
-        "standing facing right (profile view, badge visible on the side)",
-        "standing at 45° angle, facing left-forward (badge visible)",
-        "standing at 45° angle, facing right-forward (badge visible)",
-        "standing with body angled 45° but face turned toward camera (badge visible)",
-        "walking directly toward the camera (front view, approaching, badge visible)",
-        "walking from left to right across the field of view (profile, badge visible)",
-        "walking from right to left across the field of view (profile, badge visible)",
-        "walking diagonally from left-forward to right-backward (badge remains visible)",
-        "walking diagonally from right-forward to left-backward (badge remains visible)",
-        "approaching the camera at a slight angle (badge visible)",
-        "standing with arms at sides, facing the camera (badge visible on chest)",
-        "standing with arms crossed, facing the camera (badge visible on chest)",
-        "standing with one hand in pocket, facing the camera (badge visible)",
-        "looking down slightly but body still facing camera (badge visible)",
+        "facing the camera",
+        "slightly facing left",
+        "slightly facing right",
+        "walking toward the camera",
+        "walking away from the camera",
+        "walking left",
+        "walking right",
+        "looking down",
+        "standing naturally",
+        "sitting infront of a desk",
     ],
-    
+    "style": [
+        "polo shirt",
+        "button-up shirt",
+        "office shirt",
+        "T-shirt",
+    ],
     "color": [
         "white",
         "black",
-        "dark navy blue",
-        "charcoal gray",
-        "light gray",
-        "beige",
-        "cream",
-        "brown",
-        "dark green",
-        "forest green",
-        "light blue",
-        "sky blue",
-        "royal blue",
+        "blue",
+        "green",
         "red",
-        "burgundy",
-        "dark red",
-        "pink",
-        "light pink",
-        "orange",
-        "mustard yellow",
+        "gray",
         "yellow",
+        "orange",
         "purple",
-        "lavender",
-        "teal",
-        "turquoise",
-        "mint green",
-        "olive green",
-        "maroon",
-        "coral",
-        "peach",
-        "ivory",
-        "tan",
-        "khaki",
-        "steel blue",
-        "slate gray",
-        "wine red",
-        "emerald green",
-        "sapphire blue",
-        "golden yellow",
-        "bronze",
+        "brown",
+        "pink"
     ],
-        
-    "setting": [
-        "a blurred office corridor",
-        "a blurred company lobby",
-        "a blurred open-plan office",
-        "a blurred office entrance with badge reader",
-        "a blurred conference venue",
-        "a blurred elevator lobby",
-        "a blurred hallway with doors",
-        "a blurred meeting room with glass panels",
-        "a blurred break room with tables",
-        "a blurred reception area with desk",
-        "a blurred stairwell landing",
-        "a blurred medical office reception",
-        "a blurred hotel lobby",
-        "a blurred university hallway",
-        "a blurred airport terminal corridor",
-        "a blurred shopping mall corridor",
-        "a blurred indoor parking entrance",
-        "a blurred museum gallery",
-        "a blurred library with bookshelves",
-        "a blurred gym entrance area",
-    ],
-    
-    "style":[
-        "business suit and tie",
-        "business casual shirt and chinos",
-        "professional dress",
-        "blazer with jeans",
-        "company-branded polo shirt with trousers",
-        "dark suit with a name tag prominently displayed",
-        "light-colored button-up shirt with dark trousers",
-        "professional uniform",
-        "sweater or cardigan with collared shirt underneath",
-        "tailored skirt suit",
-        "lab coat over professional clothing",
-        "jacket with shirt and trousers",
-        "vest and dress shirt",
-        "turtleneck with blazer",
-    ],
-    
-    "light": [
-        "cool overhead fluorescent lights",
-        "harsh ambient ceiling lights with some shadows",
-        "mixed lighting (warm desk lamps and cool overhead)",
-        "even ambient indoor lighting with moderate contrast",
-        "bright white LED overhead lights",
-        "standard office lighting with no dramatic shadows",
-        "bright and evenly distributed lighting",
-        "slightly dim lighting with visible shadows",
-    ],
+    "people_count": [2, 10],
+    "badge_count": [0, 3],
 }
-
 
 # cnn val transformer
 val_transform = transforms.Compose([
